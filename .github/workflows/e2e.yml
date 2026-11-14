@@ -31,7 +31,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v6
-
+        with:
+          submodules: recursive
       # Java Backend
       - name: Setup Java
         uses: actions/setup-java@v5

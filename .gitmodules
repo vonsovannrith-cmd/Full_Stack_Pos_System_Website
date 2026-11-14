@@ -1,0 +1,7 @@
+[submodule "pos_backend/pos_system"]
+    path = pos_backend/pos_system
+    url = https://github.com/vonsovannrith-cmd/pos_system_backend_webiste.git
+
+[submodule "pos_frontend/pos_system"]
+    path = pos_frontend/pos_system
+    url = https://github.com/vonsovannrith-cmd/pos_system_frontend_website.git
