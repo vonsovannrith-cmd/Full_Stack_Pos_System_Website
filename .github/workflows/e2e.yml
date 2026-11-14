@@ -1,0 +1,111 @@
+
+name: POS System CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: pos_db
+          POSTGRES_USER: pos_user
+          POSTGRES_PASSWORD: pos_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pos_user -d pos_db"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      # Java Backend
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pos_backend/pos_system/pom.xml
+
+      - name: Build and start backend
+        working-directory: pos_backend/pos_system
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/pos_db
+          DB_USERNAME: pos_user
+          DB_PASSWORD: pos_password
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SPRING_PROFILES_ACTIVE: local
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -DskipTests package
+
+          JWT_SECRET="${JWT_SECRET:-$(openssl rand -base64 32)}" \
+          DB_URL="$DB_URL" \
+          DB_USERNAME="$DB_USERNAME" \
+          DB_PASSWORD="$DB_PASSWORD" \
+          SPRING_PROFILES_ACTIVE="$SPRING_PROFILES_ACTIVE" \
+          nohup java -jar target/*.jar > "$GITHUB_WORKSPACE/backend.log" 2>&1 &
+
+          curl --silent --show-error --fail \
+            --retry 40 --retry-delay 2 --retry-all-errors \
+            http://localhost:8080/api/health
+
+      # Next.js Frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pos_frontend/pos_system/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: pos_frontend/pos_system
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build frontend
+        working-directory: pos_frontend/pos_system
+        env:
+          BACKEND_URL: http://localhost:8080
+          E2E_API_URL: http://localhost:8080
+          E2E_BASE_URL: http://localhost:3000
+        run: npm run build
+
+      - name: Run Playwright E2E
+        working-directory: pos_frontend/pos_system
+        env:
+          E2E_API_URL: http://localhost:8080
+          E2E_BASE_URL: http://localhost:3000
+        run: npm run e2e
+
+      # Reports
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: pos_frontend/pos_system/playwright-report/
+          retention-days: 7
+
+      - name: Upload backend log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-log
+          path: backend.log
+          retention-days: 7
