@@ -37,9 +37,9 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
           cache: maven
-          cache-dependency-path: pos_backend/pos_system/pom.xml
+          cache-dependency-path: ./pos_backend/pos_system/pom.xml
 
       - name: Build and start backend
         working-directory: pos_backend/pos_system
